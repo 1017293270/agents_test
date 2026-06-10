@@ -9,7 +9,8 @@
 - Docker
 - Docker Compose
 - 能访问目标 MySQL 的网络
-- Claude Code 认证目录，例如 `/home/ubuntu/.claude`
+
+不需要在服务器宿主机安装 Node.js / npm。这个项目是 Docker 部署，前端构建和 Claude Code CLI 安装都会在镜像构建过程中完成；宿主机只要能运行 Docker，并且构建镜像时能访问 npm registry 即可。
 
 建议创建部署目录：
 
@@ -27,7 +28,32 @@ host.docker.internal
 
 或者填服务器内网 IP。
 
-## 服务器安装 Claude Code
+## Claude Code 认证方式
+
+项目后端仍然通过容器内的 `claude` 命令调用 Claude Code CLI，但认证可以有两种方式。
+
+### 方式 A：外接 API / 无 Node.js 服务器，推荐给你当前场景
+
+服务器宿主机不需要安装 Node.js、npm 或 Claude Code。只需要在 GitHub Actions Secrets 里配置 API 相关变量，部署脚本会把它们作为环境变量传进容器。
+
+最常用配置：
+
+```text
+ANTHROPIC_API_KEY=你的 Anthropic API Key
+```
+
+如果你走第三方网关、企业代理或兼容服务，可以按你的网关要求补充：
+
+```text
+ANTHROPIC_AUTH_TOKEN=你的 Bearer token
+ANTHROPIC_BASE_URL=https://你的网关地址
+ANTHROPIC_MODEL=你的网关支持的模型名
+ANTHROPIC_SMALL_FAST_MODEL=你的网关支持的小模型名
+```
+
+只要配置了 API 方式，`CLAUDE_CONFIG_DIR` 可以不填。
+
+### 方式 B：挂载服务器上的 Claude Code 登录目录
 
 Docker 镜像会在容器内执行：
 
@@ -85,7 +111,12 @@ CLAUDE_CONFIG_DIR=/root/.claude
 | `SERVER_PASSWORD` | 二选一 | `your-password` | SSH 密码，不推荐但可用 |
 | `SERVER_PORT` | 否 | `22` | SSH 端口，不填默认 22 |
 | `DEPLOY_PATH` | 是 | `/opt/mysql-question-evaluator` | 服务器部署目录 |
-| `CLAUDE_CONFIG_DIR` | 否 | `/home/ubuntu/.claude` | 服务器上的 Claude Code 认证目录 |
+| `ANTHROPIC_API_KEY` | 推荐 | `sk-ant-...` | 外接 API 模式，最简单 |
+| `ANTHROPIC_AUTH_TOKEN` | 否 | `...` | 第三方网关/代理模式 Bearer token |
+| `ANTHROPIC_BASE_URL` | 否 | `https://api.example.com` | 第三方网关/代理地址 |
+| `ANTHROPIC_MODEL` | 否 | `your-model-name` | 指定 Claude Code 使用的大模型 |
+| `ANTHROPIC_SMALL_FAST_MODEL` | 否 | `your-small-model-name` | 指定小模型/快速模型 |
+| `CLAUDE_CONFIG_DIR` | 否 | `/home/ubuntu/.claude` | 登录目录挂载模式才需要 |
 
 `SERVER_SSH_KEY` 和 `SERVER_PASSWORD` 选一个即可。推荐使用 `SERVER_SSH_KEY`，因为密码长期放在 GitHub Secrets 里风险更高；如果先图快，可以先用 `SERVER_PASSWORD` 跑通，后续再换成 SSH key。
 
@@ -114,7 +145,16 @@ curl http://127.0.0.1:8000/api/health/claude
 
 ## Claude Code 注意事项
 
-镜像会安装 Claude Code CLI，但认证不写进镜像，需要通过 compose 挂载认证目录：
+镜像会安装 Claude Code CLI，但认证不写进镜像。外接 API 模式下，认证来自环境变量：
+
+```yaml
+environment:
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:-}
+  ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+```
+
+登录目录模式下，可以通过 compose 挂载认证目录：
 
 ```yaml
 volumes:

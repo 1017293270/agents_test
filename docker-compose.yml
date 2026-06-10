@@ -8,6 +8,11 @@ services:
       EXPORT_DIR: /app/exports
       CLAUDE_BIN: claude
       CLAUDE_TIMEOUT_SECONDS: "180"
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_AUTH_TOKEN: ${ANTHROPIC_AUTH_TOKEN:-}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      ANTHROPIC_SMALL_FAST_MODEL: ${ANTHROPIC_SMALL_FAST_MODEL:-}
     volumes:
       - ./data:/app/data
       - ./exports:/app/exports

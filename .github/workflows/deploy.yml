@@ -21,6 +21,9 @@ jobs:
           SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
           SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
+          CLAUDE_CONFIG_DIR: ${{ secrets.CLAUDE_CONFIG_DIR }}
         run: |
           missing=0
           if [ -z "$SERVER_HOST" ]; then echo "::error::Missing GitHub Secret: SERVER_HOST"; missing=1; fi
@@ -29,6 +32,9 @@ jobs:
           if [ -z "$SERVER_SSH_KEY" ] && [ -z "$SERVER_PASSWORD" ]; then
             echo "::error::Missing deploy auth. Set either SERVER_SSH_KEY or SERVER_PASSWORD in repository Actions secrets."
             missing=1
+          fi
+          if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$ANTHROPIC_AUTH_TOKEN" ] && [ -z "$CLAUDE_CONFIG_DIR" ]; then
+            echo "::warning::No Claude auth secret found. Set ANTHROPIC_API_KEY for external API mode, ANTHROPIC_AUTH_TOKEN for gateway mode, or CLAUDE_CONFIG_DIR for mounted login mode."
           fi
           exit "$missing"
 
@@ -85,13 +91,18 @@ jobs:
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           CLAUDE_CONFIG_DIR: ${{ secrets.CLAUDE_CONFIG_DIR }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
+          ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
+          ANTHROPIC_MODEL: ${{ secrets.ANTHROPIC_MODEL }}
+          ANTHROPIC_SMALL_FAST_MODEL: ${{ secrets.ANTHROPIC_SMALL_FAST_MODEL }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ secrets.SERVER_PORT || 22 }}
-          envs: DEPLOY_PATH,CLAUDE_CONFIG_DIR
+          envs: DEPLOY_PATH,CLAUDE_CONFIG_DIR,ANTHROPIC_API_KEY,ANTHROPIC_AUTH_TOKEN,ANTHROPIC_BASE_URL,ANTHROPIC_MODEL,ANTHROPIC_SMALL_FAST_MODEL
           script: |
             set -euo pipefail
             : "${DEPLOY_PATH:?DEPLOY_PATH secret is required}"
@@ -101,6 +112,11 @@ jobs:
             if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
               export CLAUDE_CONFIG_DIR
             fi
+            for name in ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN ANTHROPIC_BASE_URL ANTHROPIC_MODEL ANTHROPIC_SMALL_FAST_MODEL; do
+              if [ -n "${!name:-}" ]; then
+                export "$name"
+              fi
+            done
             docker compose up --build -d
             docker compose ps
             sleep 3

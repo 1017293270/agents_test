@@ -35,7 +35,7 @@ npm run dev
 
 ## Docker 部署
 
-服务器上可以用 Docker Compose 部署。注意：宿主机安装了 Claude Code CLI，不代表容器里自动可用；这个镜像会在容器内安装 `@anthropic-ai/claude-code`，还需要把认证信息挂进容器。
+服务器上可以用 Docker Compose 部署。宿主机不需要安装 Node.js/npm；这个镜像会在构建时完成前端构建，并在容器内安装 `@anthropic-ai/claude-code`。Claude 认证推荐通过外接 API 环境变量注入，也可以挂载服务器上的 Claude Code 登录目录。
 
 ```powershell
 docker compose up --build -d
@@ -58,6 +58,14 @@ docker compose up --build -d
 
 Linux 上如果 MySQL 在宿主机本机，容器里不要填 `localhost`，可以填 `host.docker.internal` 或宿主机内网地址。
 
+外接 API 模式下，在部署环境或 GitHub Actions Secrets 里配置：
+
+```text
+ANTHROPIC_API_KEY=你的 Anthropic API Key
+```
+
+如果使用第三方网关/代理，再按需配置 `ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_MODEL`。
+
 ## CI/CD
 
 项目内置 GitHub Actions：
@@ -65,9 +73,9 @@ Linux 上如果 MySQL 在宿主机本机，容器里不要填 `localhost`，可�
 - `.github/workflows/ci.yml`：PR/push 时运行后端测试、前端构建、Docker Compose 校验和镜像构建。
 - `.github/workflows/deploy.yml`：推送到 `main` 或手动触发时，通过 SSH 上传代码包到服务器并执行 `docker compose up --build -d`。
 
-部署需要在 GitHub Actions Secrets 配置 `SERVER_HOST`、`SERVER_USER`、`DEPLOY_PATH`，认证方式在 `SERVER_SSH_KEY` 和 `SERVER_PASSWORD` 中二选一；可选配置 `SERVER_PORT`、`CLAUDE_CONFIG_DIR`。详细说明见 `docs/deployment.md`。
+部署需要在 GitHub Actions Secrets 配置 `SERVER_HOST`、`SERVER_USER`、`DEPLOY_PATH`，认证方式在 `SERVER_SSH_KEY` 和 `SERVER_PASSWORD` 中二选一；Claude 外接 API 模式配置 `ANTHROPIC_API_KEY`，可选配置 `SERVER_PORT`、`ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN`、`ANTHROPIC_MODEL`、`CLAUDE_CONFIG_DIR`。详细说明见 `docs/deployment.md`。
 
-服务器上 Claude Code 需要先完成认证。常用方式是在服务器执行 `npm install -g @anthropic-ai/claude-code`，再运行 `claude` 登录，确认 `~/.claude` 存在后，把它通过 `CLAUDE_CONFIG_DIR` 挂载给容器。
+如果你使用 `CLAUDE_CONFIG_DIR` 登录目录模式，服务器上 Claude Code 需要先完成认证。外接 API 模式不需要这一步。
 
 ## 健康检查
 
