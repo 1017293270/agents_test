@@ -1,0 +1,12 @@
+.venv
+__pycache__
+.pytest_cache
+node_modules
+frontend/dist
+data
+exports
+.git
+.superpowers
+*.sqlite3
+*.pyc
+*.log

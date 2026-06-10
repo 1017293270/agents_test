@@ -1,0 +1,17 @@
+services:
+  evaluator:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      APP_DATA_DIR: /app/data
+      EXPORT_DIR: /app/exports
+      CLAUDE_BIN: claude
+      CLAUDE_TIMEOUT_SECONDS: "180"
+    volumes:
+      - ./data:/app/data
+      - ./exports:/app/exports
+      - ${CLAUDE_CONFIG_DIR:-~/.claude}:/root/.claude:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

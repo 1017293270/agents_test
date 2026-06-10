@@ -1,0 +1,88 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Validate before deployment
+        run: |
+          python -m pip install -e ".[dev]"
+          npm ci
+          python -m pytest
+          npm run build
+          docker compose config
+
+      - name: Create deployment package
+        run: |
+          mkdir -p /tmp/mysql-question-evaluator-package
+          rsync -a \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude ".venv" \
+            --exclude "node_modules" \
+            --exclude "data" \
+            --exclude "exports" \
+            --exclude "frontend/dist" \
+            --exclude ".pytest_cache" \
+            --exclude "__pycache__" \
+            --exclude "*.egg-info" \
+            ./ /tmp/mysql-question-evaluator-package/
+          tar -czf mysql-question-evaluator.tgz -C /tmp/mysql-question-evaluator-package .
+
+      - name: Upload package
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          source: mysql-question-evaluator.tgz
+          target: /tmp
+          overwrite: true
+
+      - name: Deploy with Docker Compose
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          CLAUDE_CONFIG_DIR: ${{ secrets.CLAUDE_CONFIG_DIR }}
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          envs: DEPLOY_PATH,CLAUDE_CONFIG_DIR
+          script: |
+            set -euo pipefail
+            : "${DEPLOY_PATH:?DEPLOY_PATH secret is required}"
+            mkdir -p "$DEPLOY_PATH" "$DEPLOY_PATH/data" "$DEPLOY_PATH/exports"
+            tar -xzf /tmp/mysql-question-evaluator.tgz -C "$DEPLOY_PATH"
+            cd "$DEPLOY_PATH"
+            if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
+              export CLAUDE_CONFIG_DIR
+            fi
+            docker compose up --build -d
+            docker compose ps
+            sleep 3
+            curl -fsS http://127.0.0.1:8000/api/health
+            curl -fsS http://127.0.0.1:8000/api/health/claude

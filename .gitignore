@@ -1,0 +1,13 @@
+.venv/
+node_modules/
+frontend/dist/
+data/
+exports/
+.env
+.pytest_cache/
+__pycache__/
+*.pyc
+*.sqlite3
+*.egg-info/
+*.log
+.superpowers/
