@@ -14,6 +14,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check deployment secrets
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          SERVER_PASSWORD: ${{ secrets.SERVER_PASSWORD }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          missing=0
+          if [ -z "$SERVER_HOST" ]; then echo "::error::Missing GitHub Secret: SERVER_HOST"; missing=1; fi
+          if [ -z "$SERVER_USER" ]; then echo "::error::Missing GitHub Secret: SERVER_USER"; missing=1; fi
+          if [ -z "$DEPLOY_PATH" ]; then echo "::error::Missing GitHub Secret: DEPLOY_PATH"; missing=1; fi
+          if [ -z "$SERVER_SSH_KEY" ] && [ -z "$SERVER_PASSWORD" ]; then
+            echo "::error::Missing deploy auth. Set either SERVER_SSH_KEY or SERVER_PASSWORD in repository Actions secrets."
+            missing=1
+          fi
+          exit "$missing"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
