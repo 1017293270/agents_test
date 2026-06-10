@@ -83,13 +83,14 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ secrets.SERVER_PORT || 22 }}
           source: mysql-question-evaluator.tgz
-          target: /tmp
+          target: /tmp/mysql-question-evaluator-upload-${{ github.run_id }}-${{ github.run_attempt }}
           overwrite: true
 
       - name: Deploy with Docker Compose
         uses: appleboy/ssh-action@v1.2.0
         env:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          UPLOAD_DIR: /tmp/mysql-question-evaluator-upload-${{ github.run_id }}-${{ github.run_attempt }}
           CLAUDE_CONFIG_DIR: ${{ secrets.CLAUDE_CONFIG_DIR }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
@@ -105,12 +106,13 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ secrets.SERVER_PORT || 22 }}
-          envs: DEPLOY_PATH,CLAUDE_CONFIG_DIR,ANTHROPIC_API_KEY,ANTHROPIC_AUTH_TOKEN,ANTHROPIC_BASE_URL,ANTHROPIC_MODEL,ANTHROPIC_SMALL_FAST_MODEL,NODE_BASE_IMAGE,PYTHON_BASE_IMAGE,NPM_REGISTRY
+          envs: DEPLOY_PATH,UPLOAD_DIR,CLAUDE_CONFIG_DIR,ANTHROPIC_API_KEY,ANTHROPIC_AUTH_TOKEN,ANTHROPIC_BASE_URL,ANTHROPIC_MODEL,ANTHROPIC_SMALL_FAST_MODEL,NODE_BASE_IMAGE,PYTHON_BASE_IMAGE,NPM_REGISTRY
           script: |
             set -euo pipefail
             : "${DEPLOY_PATH:?DEPLOY_PATH secret is required}"
+            : "${UPLOAD_DIR:?UPLOAD_DIR is required}"
             mkdir -p "$DEPLOY_PATH" "$DEPLOY_PATH/data" "$DEPLOY_PATH/exports"
-            tar -xzf /tmp/mysql-question-evaluator.tgz -C "$DEPLOY_PATH"
+            tar -xzf "$UPLOAD_DIR/mysql-question-evaluator.tgz" -C "$DEPLOY_PATH"
             cd "$DEPLOY_PATH"
             if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
               export CLAUDE_CONFIG_DIR
