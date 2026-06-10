@@ -96,13 +96,16 @@ jobs:
           ANTHROPIC_BASE_URL: ${{ secrets.ANTHROPIC_BASE_URL }}
           ANTHROPIC_MODEL: ${{ secrets.ANTHROPIC_MODEL }}
           ANTHROPIC_SMALL_FAST_MODEL: ${{ secrets.ANTHROPIC_SMALL_FAST_MODEL }}
+          NODE_BASE_IMAGE: ${{ secrets.NODE_BASE_IMAGE }}
+          PYTHON_BASE_IMAGE: ${{ secrets.PYTHON_BASE_IMAGE }}
+          NPM_REGISTRY: ${{ secrets.NPM_REGISTRY }}
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ secrets.SERVER_PORT || 22 }}
-          envs: DEPLOY_PATH,CLAUDE_CONFIG_DIR,ANTHROPIC_API_KEY,ANTHROPIC_AUTH_TOKEN,ANTHROPIC_BASE_URL,ANTHROPIC_MODEL,ANTHROPIC_SMALL_FAST_MODEL
+          envs: DEPLOY_PATH,CLAUDE_CONFIG_DIR,ANTHROPIC_API_KEY,ANTHROPIC_AUTH_TOKEN,ANTHROPIC_BASE_URL,ANTHROPIC_MODEL,ANTHROPIC_SMALL_FAST_MODEL,NODE_BASE_IMAGE,PYTHON_BASE_IMAGE,NPM_REGISTRY
           script: |
             set -euo pipefail
             : "${DEPLOY_PATH:?DEPLOY_PATH secret is required}"
@@ -117,6 +120,9 @@ jobs:
                 export "$name"
               fi
             done
+            export NODE_BASE_IMAGE="${NODE_BASE_IMAGE:-docker.m.daocloud.io/library/node:22-bookworm-slim}"
+            export PYTHON_BASE_IMAGE="${PYTHON_BASE_IMAGE:-docker.m.daocloud.io/library/python:3.12-slim}"
+            export NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}"
             docker compose up --build -d
             docker compose ps
             sleep 3

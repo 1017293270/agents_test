@@ -117,6 +117,9 @@ CLAUDE_CONFIG_DIR=/root/.claude
 | `ANTHROPIC_MODEL` | 否 | `your-model-name` | 指定 Claude Code 使用的大模型 |
 | `ANTHROPIC_SMALL_FAST_MODEL` | 否 | `your-small-model-name` | 指定小模型/快速模型 |
 | `CLAUDE_CONFIG_DIR` | 否 | `/home/ubuntu/.claude` | 登录目录挂载模式才需要 |
+| `NODE_BASE_IMAGE` | 否 | `docker.m.daocloud.io/library/node:22-bookworm-slim` | Docker Hub 拉取慢时覆盖 Node 基础镜像 |
+| `PYTHON_BASE_IMAGE` | 否 | `docker.m.daocloud.io/library/python:3.12-slim` | Docker Hub 拉取慢时覆盖 Python 基础镜像 |
+| `NPM_REGISTRY` | 否 | `https://registry.npmmirror.com` | npm registry 慢时覆盖 |
 
 `SERVER_SSH_KEY` 和 `SERVER_PASSWORD` 选一个即可。推荐使用 `SERVER_SSH_KEY`，因为密码长期放在 GitHub Secrets 里风险更高；如果先图快，可以先用 `SERVER_PASSWORD` 跑通，后续再换成 SSH key。
 
@@ -142,6 +145,25 @@ docker compose logs -f evaluator
 curl http://127.0.0.1:8000/api/health
 curl http://127.0.0.1:8000/api/health/claude
 ```
+
+## Docker Hub 超时
+
+如果部署日志出现类似：
+
+```text
+failed to resolve source metadata for docker.io/library/python:3.12-slim
+dial tcp ... registry-1.docker.io:443: i/o timeout
+```
+
+说明服务器访问 Docker Hub 超时。自动部署默认会在服务器构建时使用下面的国内镜像配置：
+
+```text
+NODE_BASE_IMAGE=docker.m.daocloud.io/library/node:22-bookworm-slim
+PYTHON_BASE_IMAGE=docker.m.daocloud.io/library/python:3.12-slim
+NPM_REGISTRY=https://registry.npmmirror.com
+```
+
+如果你的服务器能直连 Docker Hub，也可以在 GitHub Secrets 里把 `NODE_BASE_IMAGE`、`PYTHON_BASE_IMAGE` 改回官方镜像。
 
 ## Claude Code 注意事项
 

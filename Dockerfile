@@ -1,12 +1,21 @@
-FROM node:22-bookworm-slim AS frontend
+ARG NODE_BASE_IMAGE=node:22-bookworm-slim
+ARG PYTHON_BASE_IMAGE=python:3.12-slim
+ARG NPM_REGISTRY=https://registry.npmjs.org/
+
+FROM ${NODE_BASE_IMAGE} AS frontend
+
+ARG NPM_REGISTRY
 
 WORKDIR /app
 COPY package.json package-lock.json* tsconfig.json vite.config.ts index.html ./
 COPY src ./src
-RUN npm install
+RUN npm config set registry "$NPM_REGISTRY" \
+    && npm install
 RUN npm run build
 
-FROM python:3.12-slim AS runtime
+FROM ${PYTHON_BASE_IMAGE} AS runtime
+
+ARG NPM_REGISTRY
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/backend \
@@ -19,6 +28,7 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl nodejs npm \
+    && npm config set registry "$NPM_REGISTRY" \
     && npm install -g @anthropic-ai/claude-code \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
