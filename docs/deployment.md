@@ -35,10 +35,13 @@ host.docker.internal
 | --- | --- | --- | --- |
 | `SERVER_HOST` | 是 | `1.2.3.4` | 服务器公网 IP 或域名 |
 | `SERVER_USER` | 是 | `ubuntu` | SSH 用户 |
-| `SERVER_SSH_KEY` | 是 | 私钥内容 | 能登录服务器的 SSH 私钥 |
+| `SERVER_SSH_KEY` | 二选一 | 私钥内容 | 能登录服务器的 SSH 私钥，推荐 |
+| `SERVER_PASSWORD` | 二选一 | `your-password` | SSH 密码，不推荐但可用 |
 | `SERVER_PORT` | 否 | `22` | SSH 端口，不填默认 22 |
 | `DEPLOY_PATH` | 是 | `/opt/mysql-question-evaluator` | 服务器部署目录 |
 | `CLAUDE_CONFIG_DIR` | 否 | `/home/ubuntu/.claude` | 服务器上的 Claude Code 认证目录 |
+
+`SERVER_SSH_KEY` 和 `SERVER_PASSWORD` 选一个即可。推荐使用 `SERVER_SSH_KEY`，因为密码长期放在 GitHub Secrets 里风险更高；如果先图快，可以先用 `SERVER_PASSWORD` 跑通，后续再换成 SSH key。
 
 ## 部署流程
 

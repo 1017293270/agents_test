@@ -65,7 +65,7 @@ Linux 上如果 MySQL 在宿主机本机，容器里不要填 `localhost`，可�
 - `.github/workflows/ci.yml`：PR/push 时运行后端测试、前端构建、Docker Compose 校验和镜像构建。
 - `.github/workflows/deploy.yml`：推送到 `main` 或手动触发时，通过 SSH 上传代码包到服务器并执行 `docker compose up --build -d`。
 
-部署需要在 GitHub Actions Secrets 配置 `SERVER_HOST`、`SERVER_USER`、`SERVER_SSH_KEY`、`DEPLOY_PATH`，可选配置 `SERVER_PORT`、`CLAUDE_CONFIG_DIR`。详细说明见 `docs/deployment.md`。
+部署需要在 GitHub Actions Secrets 配置 `SERVER_HOST`、`SERVER_USER`、`DEPLOY_PATH`，认证方式在 `SERVER_SSH_KEY` 和 `SERVER_PASSWORD` 中二选一；可选配置 `SERVER_PORT`、`CLAUDE_CONFIG_DIR`。详细说明见 `docs/deployment.md`。
 
 ## 健康检查
 
