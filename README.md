@@ -67,6 +67,8 @@ Linux 上如果 MySQL 在宿主机本机，容器里不要填 `localhost`，可�
 
 部署需要在 GitHub Actions Secrets 配置 `SERVER_HOST`、`SERVER_USER`、`DEPLOY_PATH`，认证方式在 `SERVER_SSH_KEY` 和 `SERVER_PASSWORD` 中二选一；可选配置 `SERVER_PORT`、`CLAUDE_CONFIG_DIR`。详细说明见 `docs/deployment.md`。
 
+服务器上 Claude Code 需要先完成认证。常用方式是在服务器执行 `npm install -g @anthropic-ai/claude-code`，再运行 `claude` 登录，确认 `~/.claude` 存在后，把它通过 `CLAUDE_CONFIG_DIR` 挂载给容器。
+
 ## 健康检查
 
 - `GET /api/health`

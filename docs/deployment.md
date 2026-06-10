@@ -27,6 +27,52 @@ host.docker.internal
 
 或者填服务器内网 IP。
 
+## 服务器安装 Claude Code
+
+Docker 镜像会在容器内执行：
+
+```bash
+npm install -g @anthropic-ai/claude-code
+```
+
+所以容器里会有 `claude` 命令。但 Claude Code 的认证不会写进镜像，你仍然需要在服务器宿主机上登录一次，生成可挂载的认证目录。
+
+服务器宿主机安装和登录示例：
+
+```bash
+# 安装 Node.js 20+ 或 22+ 后执行
+npm install -g @anthropic-ai/claude-code
+
+# 检查安装
+claude --version
+
+# 首次登录/认证，按提示完成
+claude
+
+# 验证非交互调用
+echo "Reply with exactly ok" | claude -p --output-format json --no-session-persistence
+```
+
+认证成功后，通常会生成：
+
+```text
+~/.claude
+```
+
+然后在 GitHub Secrets 里设置：
+
+```text
+CLAUDE_CONFIG_DIR=/home/你的用户/.claude
+```
+
+如果你用 `root` 用户登录服务器，通常是：
+
+```text
+CLAUDE_CONFIG_DIR=/root/.claude
+```
+
+如果你没有设置 `CLAUDE_CONFIG_DIR`，compose 会默认挂载服务器上的 `~/.claude` 到容器里的 `/root/.claude`。
+
 ## GitHub Secrets
 
 在 GitHub 仓库里进入 `Settings -> Secrets and variables -> Actions`，添加：
