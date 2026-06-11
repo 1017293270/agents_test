@@ -18,15 +18,29 @@ class Repository:
         with self.connect() as db:
             db.executescript(
                 """
+                create table if not exists data_sources (
+                    id integer primary key autoincrement,
+                    name text not null,
+                    connection_json text not null,
+                    knowledge_base text not null default '',
+                    created_at text not null default current_timestamp,
+                    updated_at text not null default current_timestamp
+                );
+
                 create table if not exists runs (
                     id integer primary key autoincrement,
+                    data_source_id integer references data_sources(id) on delete set null,
                     name text not null,
                     db_engine text not null,
                     db_host text not null,
                     db_name text not null,
                     question_count integer not null,
                     status text not null,
+                    stage text not null default 'pending',
+                    stage_message text not null default '',
+                    processed_count integer not null default 0,
                     business_context text not null default '',
+                    knowledge_base text not null default '',
                     error text,
                     created_at text not null default current_timestamp,
                     updated_at text not null default current_timestamp
@@ -48,6 +62,48 @@ class Repository:
                 );
                 """
             )
+            self._ensure_column(db, "runs", "data_source_id", "integer references data_sources(id) on delete set null")
+            self._ensure_column(db, "runs", "stage", "text not null default 'pending'")
+            self._ensure_column(db, "runs", "stage_message", "text not null default ''")
+            self._ensure_column(db, "runs", "processed_count", "integer not null default 0")
+            self._ensure_column(db, "runs", "knowledge_base", "text not null default ''")
+
+    def _ensure_column(self, db: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+        columns = {str(row["name"]) for row in db.execute(f"pragma table_info({table})").fetchall()}
+        if column not in columns:
+            db.execute(f"alter table {table} add column {column} {definition}")
+
+    def create_data_source(self, name: str, connection: dict[str, Any], knowledge_base: str = "") -> int:
+        with self.connect() as db:
+            cursor = db.execute(
+                """
+                insert into data_sources (name, connection_json, knowledge_base)
+                values (?, ?, ?)
+                """,
+                (name, json.dumps(connection, ensure_ascii=False), knowledge_base),
+            )
+            return int(cursor.lastrowid)
+
+    def update_data_source(self, data_source_id: int, name: str, connection: dict[str, Any], knowledge_base: str = "") -> None:
+        with self.connect() as db:
+            db.execute(
+                """
+                update data_sources
+                set name = ?, connection_json = ?, knowledge_base = ?, updated_at = current_timestamp
+                where id = ?
+                """,
+                (name, json.dumps(connection, ensure_ascii=False), knowledge_base, data_source_id),
+            )
+
+    def get_data_source(self, data_source_id: int) -> dict[str, Any] | None:
+        with self.connect() as db:
+            row = db.execute("select * from data_sources where id = ?", (data_source_id,)).fetchone()
+        return _data_source_from_row(row) if row else None
+
+    def list_data_sources(self) -> list[dict[str, Any]]:
+        with self.connect() as db:
+            rows = db.execute("select * from data_sources order by updated_at desc, id desc").fetchall()
+        return [_data_source_from_row(row) for row in rows]
 
     def create_run(
         self,
@@ -57,14 +113,19 @@ class Repository:
         db_name: str,
         question_count: int,
         business_context: str,
+        data_source_id: int | None = None,
+        knowledge_base: str = "",
     ) -> int:
         with self.connect() as db:
             cursor = db.execute(
                 """
-                insert into runs (name, db_engine, db_host, db_name, question_count, status, business_context)
-                values (?, ?, ?, ?, ?, 'pending', ?)
+                insert into runs (
+                    data_source_id, name, db_engine, db_host, db_name, question_count,
+                    status, stage, stage_message, processed_count, business_context, knowledge_base
+                )
+                values (?, ?, ?, ?, ?, ?, 'pending', 'pending', 'Waiting to start', 0, ?, ?)
                 """,
-                (name, db_engine, db_host, db_name, question_count, business_context),
+                (data_source_id, name, db_engine, db_host, db_name, question_count, business_context, knowledge_base),
             )
             return int(cursor.lastrowid)
 
@@ -74,6 +135,29 @@ class Repository:
                 "update runs set status = ?, error = ?, updated_at = current_timestamp where id = ?",
                 (status, error, run_id),
             )
+
+    def update_run_progress(
+        self,
+        run_id: int,
+        stage: str,
+        stage_message: str,
+        processed_count: int | None = None,
+    ) -> None:
+        with self.connect() as db:
+            if processed_count is None:
+                db.execute(
+                    "update runs set stage = ?, stage_message = ?, updated_at = current_timestamp where id = ?",
+                    (stage, stage_message, run_id),
+                )
+            else:
+                db.execute(
+                    """
+                    update runs
+                    set stage = ?, stage_message = ?, processed_count = ?, updated_at = current_timestamp
+                    where id = ?
+                    """,
+                    (stage, stage_message, processed_count, run_id),
+                )
 
     def get_run(self, run_id: int) -> dict[str, Any] | None:
         with self.connect() as db:
@@ -150,4 +234,10 @@ def _question_from_row(row: sqlite3.Row) -> dict[str, Any]:
     data = dict(row)
     data["tables"] = json.loads(data.pop("tables_json") or "[]")
     data["result_preview"] = json.loads(data.pop("result_preview_json") or "[]")
+    return data
+
+
+def _data_source_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    data = dict(row)
+    data["connection"] = json.loads(data.pop("connection_json") or "{}")
     return data

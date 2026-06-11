@@ -12,6 +12,8 @@ from app.generator import retry_failed_questions, run_generation
 from app.models import (
     ClaudeHealthResponse,
     ConnectionTestResponse,
+    DataSourceCreateRequest,
+    DataSourceResponse,
     HealthResponse,
     MySqlConnection,
     RunCreateRequest,
@@ -77,6 +79,40 @@ def api_inspect_schema(request: SchemaInspectRequest) -> SchemaInspectResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/api/data-sources")
+def list_data_sources():
+    return {"data_sources": repo.list_data_sources()}
+
+
+@app.post("/api/data-sources", response_model=DataSourceResponse)
+def create_data_source(request: DataSourceCreateRequest) -> DataSourceResponse:
+    data_source_id = repo.create_data_source(
+        name=request.name,
+        connection=request.connection.model_dump(),
+        knowledge_base=request.knowledge_base,
+    )
+    data_source = repo.get_data_source(data_source_id)
+    if not data_source:
+        raise HTTPException(status_code=500, detail="Data source was not saved")
+    return DataSourceResponse(**data_source)
+
+
+@app.put("/api/data-sources/{data_source_id}", response_model=DataSourceResponse)
+def update_data_source(data_source_id: int, request: DataSourceCreateRequest) -> DataSourceResponse:
+    if not repo.get_data_source(data_source_id):
+        raise HTTPException(status_code=404, detail="Data source not found")
+    repo.update_data_source(
+        data_source_id=data_source_id,
+        name=request.name,
+        connection=request.connection.model_dump(),
+        knowledge_base=request.knowledge_base,
+    )
+    data_source = repo.get_data_source(data_source_id)
+    if not data_source:
+        raise HTTPException(status_code=500, detail="Data source was not saved")
+    return DataSourceResponse(**data_source)
+
+
 @app.get("/api/runs")
 def list_runs():
     return {"runs": repo.list_runs()}
@@ -84,23 +120,27 @@ def list_runs():
 
 @app.post("/api/runs")
 def create_run(request: RunCreateRequest, background_tasks: BackgroundTasks):
+    connection, knowledge_base, data_source_id = resolve_run_inputs(request)
     run_id = repo.create_run(
         name=request.name,
         db_engine="mysql",
-        db_host=f"{request.connection.host}:{request.connection.port}",
-        db_name=request.connection.database,
+        db_host=f"{connection.host}:{connection.port}",
+        db_name=connection.database,
         question_count=request.question_count,
         business_context=request.business_context,
+        data_source_id=data_source_id,
+        knowledge_base=knowledge_base,
     )
     background_tasks.add_task(
         run_generation,
         repo,
         settings,
         run_id,
-        request.connection,
+        connection,
         request.business_context,
         request.question_count,
         request.sample_rows,
+        knowledge_base,
     )
     return {"run_id": run_id}
 
@@ -116,16 +156,19 @@ def get_run(run_id: int) -> RunDetailResponse:
 
 @app.post("/api/runs/{run_id}/retry-failed")
 def retry_failed(run_id: int, request: RunCreateRequest, background_tasks: BackgroundTasks):
-    if not repo.get_run(run_id):
+    run = repo.get_run(run_id)
+    if not run:
         raise HTTPException(status_code=404, detail="Run not found")
+    connection, knowledge_base, _ = resolve_run_inputs(request, fallback_run=run)
     background_tasks.add_task(
         retry_failed_questions,
         repo,
         settings,
         run_id,
-        request.connection,
+        connection,
         request.business_context,
         request.sample_rows,
+        knowledge_base,
     )
     return {"run_id": run_id, "status": "retrying"}
 
@@ -146,3 +189,22 @@ def export_run(run_id: int, format: str = Query(pattern="^(xlsx|jsonl)$")):
 static_dir = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 if static_dir.exists():
     app.mount("/", StaticFiles(directory=static_dir, html=True), name="frontend")
+
+
+def resolve_run_inputs(
+    request: RunCreateRequest,
+    fallback_run: dict | None = None,
+) -> tuple[MySqlConnection, str, int | None]:
+    data_source_id = request.data_source_id or (fallback_run or {}).get("data_source_id")
+    if data_source_id:
+        data_source = repo.get_data_source(int(data_source_id))
+        if not data_source:
+            raise HTTPException(status_code=404, detail="Data source not found")
+        return (
+            MySqlConnection(**data_source["connection"]),
+            data_source.get("knowledge_base") or "",
+            int(data_source_id),
+        )
+    if request.connection is None:
+        raise HTTPException(status_code=400, detail="connection or data_source_id is required")
+    return request.connection, request.knowledge_base or (fallback_run or {}).get("knowledge_base", ""), None

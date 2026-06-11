@@ -3,13 +3,17 @@ import ReactDOM from "react-dom/client";
 import {
   Activity,
   AlertCircle,
+  BookOpen,
   CheckCircle2,
   Database,
   Download,
   FileText,
   Play,
+  Plus,
   RefreshCw,
+  Save,
   Table2,
+  Upload,
   XCircle
 } from "lucide-react";
 import "./styles.css";
@@ -21,6 +25,15 @@ type Connection = {
   password: string;
   database: string;
   connect_timeout: number;
+};
+
+type DataSource = {
+  id: number;
+  name: string;
+  connection: Connection;
+  knowledge_base: string;
+  created_at: string;
+  updated_at: string;
 };
 
 type ColumnInfo = {
@@ -46,7 +59,12 @@ type Run = {
   db_name: string;
   question_count: number;
   status: string;
+  stage: string;
+  stage_message: string;
+  processed_count: number;
   business_context: string;
+  data_source_id?: number | null;
+  knowledge_base: string;
   error?: string | null;
   created_at: string;
   updated_at: string;
@@ -81,7 +99,11 @@ const defaultConnection: Connection = {
 };
 
 function App() {
+  const [dataSources, setDataSources] = React.useState<DataSource[]>([]);
+  const [selectedDataSourceId, setSelectedDataSourceId] = React.useState<number | null>(null);
+  const [dataSourceName, setDataSourceName] = React.useState("");
   const [connection, setConnection] = React.useState<Connection>(defaultConnection);
+  const [knowledgeBase, setKnowledgeBase] = React.useState("");
   const [businessContext, setBusinessContext] = React.useState("");
   const [questionCount, setQuestionCount] = React.useState(100);
   const [schema, setSchema] = React.useState<TableInfo[]>([]);
@@ -92,9 +114,11 @@ function App() {
   const [loading, setLoading] = React.useState<string | null>(null);
   const [schemaError, setSchemaError] = React.useState<string | null>(null);
   const [connectionMessage, setConnectionMessage] = React.useState<string | null>(null);
+  const [isDataSourceDirty, setIsDataSourceDirty] = React.useState(false);
 
   React.useEffect(() => {
-    refreshRuns();
+    void refreshDataSources(true);
+    void refreshRuns();
   }, []);
 
   React.useEffect(() => {
@@ -121,6 +145,19 @@ function App() {
     return response.json() as Promise<T>;
   }
 
+  async function refreshDataSources(autoSelect = false) {
+    try {
+      const payload = await api<{ data_sources: DataSource[] }>("/api/data-sources");
+      setDataSources(payload.data_sources);
+      if (autoSelect && payload.data_sources.length > 0 && selectedDataSourceId === null) {
+        void applyDataSource(payload.data_sources[0]);
+      }
+    } catch (error) {
+      setDataSources([]);
+      setMessage(readableError(error, "读取数据源失败"));
+    }
+  }
+
   async function refreshRuns() {
     try {
       const payload = await api<{ runs: Run[] }>("/api/runs");
@@ -139,6 +176,7 @@ function App() {
     try {
       const payload = await api<RunDetail>(`/api/runs/${runId}`);
       setCurrentRun(payload);
+      if (payload.run.stage_message) setMessage(payload.run.stage_message);
       await refreshRuns();
     } catch (error) {
       if (error instanceof Error && error.message.includes("Run not found")) {
@@ -147,7 +185,68 @@ function App() {
         await refreshRuns();
         return;
       }
-      setMessage(error instanceof Error ? error.message : "刷新任务失败");
+      setMessage(readableError(error, "刷新任务失败"));
+    }
+  }
+
+  async function applyDataSource(source: DataSource) {
+    setSelectedDataSourceId(source.id);
+    setDataSourceName(source.name);
+    setConnection(source.connection);
+    setKnowledgeBase(source.knowledge_base || "");
+    setSchema([]);
+    setSchemaError(null);
+    setConnectionMessage(null);
+    setIsDataSourceDirty(false);
+    setMessage(`已选择数据源：${source.name}`);
+    try {
+      await inspect(source.connection);
+    } catch {
+      // inspect() already updates the visible error state.
+    }
+  }
+
+  function startNewDataSource() {
+    setSelectedDataSourceId(null);
+    setDataSourceName("");
+    setConnection(defaultConnection);
+    setKnowledgeBase("");
+    setSchema([]);
+    setSchemaError(null);
+    setConnectionMessage(null);
+    setIsDataSourceDirty(false);
+    setMessage("正在添加新的数据源。");
+  }
+
+  function updateConnection(patch: Partial<Connection>) {
+    setConnection((current) => ({ ...current, ...patch }));
+    setIsDataSourceDirty(true);
+  }
+
+  async function saveDataSource() {
+    setLoading("save-source");
+    try {
+      const payload = {
+        name: dataSourceName.trim() || `${connection.database || connection.host || "MySQL"} 数据源`,
+        connection,
+        knowledge_base: knowledgeBase
+      };
+      const saved = selectedDataSourceId
+        ? await api<DataSource>(`/api/data-sources/${selectedDataSourceId}`, {
+            method: "PUT",
+            body: JSON.stringify(payload)
+          })
+        : await api<DataSource>("/api/data-sources", {
+            method: "POST",
+            body: JSON.stringify(payload)
+          });
+      await applyDataSource(saved);
+      await refreshDataSources();
+      setMessage(`数据源已保存：${saved.name}`);
+    } catch (error) {
+      setMessage(readableError(error, "保存数据源失败"));
+    } finally {
+      setLoading(null);
     }
   }
 
@@ -161,7 +260,7 @@ function App() {
       setMessage(payload.message);
       setConnectionMessage(payload.message);
     } catch (error) {
-      const nextMessage = error instanceof Error ? error.message : "连接测试失败";
+      const nextMessage = readableError(error, "连接测试失败");
       setMessage(nextMessage);
       setConnectionMessage(nextMessage);
     } finally {
@@ -169,16 +268,16 @@ function App() {
     }
   }
 
-  async function inspect(): Promise<TableInfo[]> {
+  async function inspect(nextConnection: Connection = connection): Promise<TableInfo[]> {
     setLoading("schema");
     try {
       const payload = await api<{ database: string; tables: TableInfo[] }>("/api/schema/inspect", {
         method: "POST",
-        body: JSON.stringify({ connection, sample_rows: 3 })
+        body: JSON.stringify({ connection: nextConnection, sample_rows: 3 })
       });
       setSchema(payload.tables);
       setSchemaError(null);
-      setMessage(`已读取 ${payload.tables.length} 张表。`);
+      setMessage(`已实时读取 ${payload.tables.length} 张表。`);
       return payload.tables;
     } catch (error) {
       const nextMessage = readableError(error, "读取 schema 失败");
@@ -190,23 +289,28 @@ function App() {
     }
   }
 
+  function buildRunPayload() {
+    const useSavedSource = selectedDataSourceId !== null && !isDataSourceDirty;
+    return {
+      name: `${dataSourceName || connection.database || "MySQL"} benchmark`,
+      data_source_id: useSavedSource ? selectedDataSourceId : undefined,
+      connection: useSavedSource ? undefined : connection,
+      knowledge_base: useSavedSource ? undefined : knowledgeBase,
+      business_context: businessContext,
+      question_count: questionCount,
+      sample_rows: 3
+    };
+  }
+
   async function startRun() {
     setLoading("run");
     try {
-      if (schema.length === 0) {
-        setMessage("正在先读取库表结构...");
-        await inspect();
-        setLoading("run");
-      }
+      setMessage("正在实时读取库表结构...");
+      await inspect();
+      setLoading("run");
       const payload = await api<{ run_id: number }>("/api/runs", {
         method: "POST",
-        body: JSON.stringify({
-          name: `${connection.database || "MySQL"} benchmark`,
-          connection,
-          business_context: businessContext,
-          question_count: questionCount,
-          sample_rows: 3
-        })
+        body: JSON.stringify(buildRunPayload())
       });
       setCurrentRunId(payload.run_id);
       setMessage(`任务 #${payload.run_id} 已启动。`);
@@ -224,13 +328,7 @@ function App() {
     try {
       await api(`/api/runs/${currentRunId}/retry-failed`, {
         method: "POST",
-        body: JSON.stringify({
-          name: currentRun?.run.name || "Retry",
-          connection,
-          business_context: businessContext,
-          question_count: questionCount,
-          sample_rows: 3
-        })
+        body: JSON.stringify(buildRunPayload())
       });
       setMessage(`任务 #${currentRunId} 已开始重试失败题。`);
     } catch (error) {
@@ -240,29 +338,34 @@ function App() {
     }
   }
 
-  async function handleContextFile(file: File | null) {
-    if (!file) return;
+  async function readContextFile(file: File): Promise<string> {
     if (file.name.endsWith(".xlsx")) {
       const { read, utils } = await import("xlsx");
       const bytes = await file.arrayBuffer();
       const workbook = read(bytes);
-      const text = workbook.SheetNames.map((name) => {
+      return workbook.SheetNames.map((name) => {
         const rows = utils.sheet_to_csv(workbook.Sheets[name]);
         return `# ${name}\n${rows}`;
       }).join("\n\n");
-      setBusinessContext((current) => [current, text].filter(Boolean).join("\n\n"));
-      return;
     }
-    const text = await file.text();
-    setBusinessContext((current) => [current, text].filter(Boolean).join("\n\n"));
+    return file.text();
+  }
+
+  async function handleKnowledgeFile(file: File | null) {
+    if (!file) return;
+    const text = await readContextFile(file);
+    setKnowledgeBase((current) => [current, text].filter(Boolean).join("\n\n"));
+    setIsDataSourceDirty(true);
   }
 
   const success = currentRun?.counts.success || 0;
   const failed = currentRun?.counts.failed || 0;
   const total = currentRun?.questions.length || 0;
-  const progress = currentRun ? Math.min(100, Math.round((total / currentRun.run.question_count) * 100)) : 0;
+  const processed = currentRun?.run.processed_count || total;
+  const progress = currentRun ? Math.min(100, Math.round((processed / currentRun.run.question_count) * 100)) : 0;
   const currentRunError = currentRun?.run.error || null;
   const schemaColumnCount = schema.reduce((sum, table) => sum + table.columns.length, 0);
+  const hasMessageError = message.includes("失败") || message.includes("error") || message.includes("detail");
 
   return (
     <main className="app-shell">
@@ -271,42 +374,69 @@ function App() {
           <p className="eyebrow">Local benchmark generator</p>
           <h1>MySQL 问数评测集生成器</h1>
         </div>
-        <div className="status-pill">
-          {message.includes("失败") || message.includes("error") || message.includes("detail") ? (
-            <XCircle size={16} />
-          ) : (
-            <Activity size={16} />
-          )}
+        <div className={`status-pill ${hasMessageError ? "danger" : ""}`}>
+          {hasMessageError ? <XCircle size={16} /> : <Activity size={16} />}
           {message}
         </div>
       </header>
 
       <section className="workspace">
         <aside className="panel setup-panel">
-          <PanelTitle icon={<Database size={18} />} title="数据源" />
+          <div className="panel-title-row">
+            <PanelTitle icon={<Database size={18} />} title="数据源" />
+            <button className="icon-button" onClick={startNewDataSource} title="新增数据源">
+              <Plus size={16} />
+            </button>
+          </div>
+
+          <div className="source-list">
+            {dataSources.length === 0 && <p className="muted">暂无保存的数据源。</p>}
+            {dataSources.map((source) => (
+              <button
+                key={source.id}
+                className={source.id === selectedDataSourceId ? "source-card active" : "source-card"}
+                onClick={() => void applyDataSource(source)}
+              >
+                <span>{source.name}</span>
+                <small>
+                  {source.connection.host}:{source.connection.port}/{source.connection.database}
+                </small>
+              </button>
+            ))}
+          </div>
+
+          <Field
+            label="数据源名称"
+            value={dataSourceName}
+            onChange={(name) => {
+              setDataSourceName(name);
+              setIsDataSourceDirty(true);
+            }}
+          />
           <div className="grid two">
-            <Field label="Host" value={connection.host} onChange={(host) => setConnection({ ...connection, host })} />
+            <Field label="Host" value={connection.host} onChange={(host) => updateConnection({ host })} />
             <Field
               label="Port"
               value={String(connection.port)}
-              onChange={(port) => setConnection({ ...connection, port: Number(port) || 3306 })}
+              onChange={(port) => updateConnection({ port: Number(port) || 3306 })}
             />
           </div>
           <div className="grid two">
-            <Field label="User" value={connection.user} onChange={(user) => setConnection({ ...connection, user })} />
+            <Field label="User" value={connection.user} onChange={(user) => updateConnection({ user })} />
             <Field
               label="Password"
               type="password"
               value={connection.password}
-              onChange={(password) => setConnection({ ...connection, password })}
+              onChange={(password) => updateConnection({ password })}
             />
           </div>
-          <Field
-            label="Database"
-            value={connection.database}
-            onChange={(database) => setConnection({ ...connection, database })}
-          />
+          <Field label="Database" value={connection.database} onChange={(database) => updateConnection({ database })} />
+
           <div className="button-row">
+            <button onClick={saveDataSource} disabled={loading === "save-source"}>
+              <Save size={16} />
+              保存数据源
+            </button>
             <button onClick={testConnection} disabled={loading === "connection"}>
               <CheckCircle2 size={16} />
               测试连接
@@ -316,26 +446,40 @@ function App() {
               读取库表
             </button>
           </div>
+          {isDataSourceDirty && <div className="inline-note">当前数据源有未保存修改。</div>}
           {connectionMessage && (
             <div className={connectionMessage.includes("ok") ? "inline-note success" : "inline-note"}>
               {connectionMessage}
             </div>
           )}
 
-          <PanelTitle icon={<FileText size={18} />} title="业务说明" />
+          <PanelTitle icon={<BookOpen size={18} />} title="数据源知识库" />
           <textarea
-            value={businessContext}
-            onChange={(event) => setBusinessContext(event.target.value)}
-            placeholder="粘贴字段口径、指标定义、业务词汇表或平台说明..."
+            className="knowledge-area"
+            value={knowledgeBase}
+            onChange={(event) => {
+              setKnowledgeBase(event.target.value);
+              setIsDataSourceDirty(true);
+            }}
+            placeholder="粘贴 README、指标口径、字段含义、别名、业务规则..."
           />
           <label className="file-input">
+            <Upload size={16} />
             上传 txt / md / csv / xlsx
             <input
               type="file"
               accept=".txt,.md,.csv,.xlsx"
-              onChange={(event) => void handleContextFile(event.target.files?.[0] || null)}
+              onChange={(event) => void handleKnowledgeFile(event.target.files?.[0] || null)}
             />
           </label>
+
+          <PanelTitle icon={<FileText size={18} />} title="本次生成补充" />
+          <textarea
+            className="context-area"
+            value={businessContext}
+            onChange={(event) => setBusinessContext(event.target.value)}
+            placeholder="临时补充本次评测偏好的问题范围、业务场景或排除项..."
+          />
 
           <PanelTitle icon={<Play size={18} />} title="生成设置" />
           <Field
@@ -352,6 +496,17 @@ function App() {
         <section className="main-panel">
           <div className="panel">
             <PanelTitle icon={<Activity size={18} />} title="任务状态" />
+            {currentRun && (
+              <div className="stage-banner">
+                <div>
+                  <span>{currentRun.run.stage}</span>
+                  <strong>{currentRun.run.stage_message || currentRun.run.status}</strong>
+                </div>
+                <small>
+                  {processed}/{currentRun.run.question_count}
+                </small>
+              </div>
+            )}
             <div className="metrics">
               <Metric label="成功" value={success} tone="success" />
               <Metric label="失败" value={failed} tone="danger" />
@@ -403,13 +558,15 @@ function App() {
             <div className="panel">
               <div className="panel-title-row">
                 <PanelTitle icon={<Table2 size={18} />} title="库表预览" />
-                <span className="mini-stat">{schema.length} 表 / {schemaColumnCount} 字段</span>
+                <span className="mini-stat">
+                  {schema.length} 表 / {schemaColumnCount} 字段
+                </span>
               </div>
               <div className="table-list">
                 {loading === "schema" && <StateBox title="正在读取库表" text="正在连接 MySQL 并读取 information_schema。" />}
                 {schemaError && <StateBox tone="danger" title="库表读取失败" text={schemaError} />}
                 {!schemaError && schema.length === 0 && loading !== "schema" && (
-                  <StateBox title="还没有库表信息" text="点击“读取库表”，或直接生成评测集时自动读取。" />
+                  <StateBox title="尚未读取库表" text="选择或保存数据源后，可实时读取当前库表结构。" />
                 )}
                 {schema.map((table) => (
                   <details key={table.name}>
@@ -444,9 +601,11 @@ function App() {
                     className={run.id === currentRunId ? "run active" : "run"}
                     onClick={() => setCurrentRunId(run.id)}
                   >
-                    <span>#{run.id} {run.db_name}</span>
+                    <span>
+                      #{run.id} {run.db_name}
+                    </span>
                     <small className={run.status === "failed" ? "danger-text" : ""}>{run.status}</small>
-                    {run.error && <em>{run.error}</em>}
+                    {run.stage_message && <em>{run.stage_message}</em>}
                   </button>
                 ))}
               </div>
@@ -456,7 +615,7 @@ function App() {
           <div className="panel">
             <PanelTitle icon={<FileText size={18} />} title="问题与标准答案" />
             <div className="question-list">
-              {!currentRun && <StateBox title="还没有选择任务" text="启动或选择一个历史任务后，这里会显示题目、SQL、答案和错误。" />}
+              {!currentRun && <StateBox title="尚未选择任务" text="启动或选择历史任务后，这里会显示题目、SQL、答案和错误。" />}
               {currentRun && currentRun.questions.length === 0 && currentRun.run.status === "failed" && (
                 <StateBox tone="danger" title="任务没有生成题目" text={currentRun.run.error || "任务在生成问题前失败。"} />
               )}

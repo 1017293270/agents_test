@@ -33,6 +33,9 @@ class ClaudeClient:
     def repair_sql(self, prompt: str) -> dict[str, Any]:
         return self.ask_json(prompt)
 
+    def summarize_answer(self, prompt: str) -> str:
+        return self.ask_text(prompt)
+
     def ask_text(self, prompt: str, timeout_seconds: int | None = None) -> str:
         completed = self._run(prompt, timeout_seconds=timeout_seconds)
         try:

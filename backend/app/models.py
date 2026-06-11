@@ -37,10 +37,27 @@ class SchemaInspectResponse(BaseModel):
     tables: list[TableInfo]
 
 
+class DataSourceCreateRequest(BaseModel):
+    name: str = "MySQL data source"
+    connection: MySqlConnection
+    knowledge_base: str = ""
+
+
+class DataSourceResponse(BaseModel):
+    id: int
+    name: str
+    connection: MySqlConnection
+    knowledge_base: str
+    created_at: str
+    updated_at: str
+
+
 class RunCreateRequest(BaseModel):
     name: str = "MySQL benchmark run"
-    connection: MySqlConnection
+    connection: MySqlConnection | None = None
+    data_source_id: int | None = None
     business_context: str = ""
+    knowledge_base: str = ""
     question_count: int = Field(default=100, ge=1, le=200)
     sample_rows: int = Field(default=3, ge=0, le=10)
 
@@ -53,7 +70,12 @@ class RunResponse(BaseModel):
     db_name: str
     question_count: int
     status: str
+    stage: str = "pending"
+    stage_message: str = ""
+    processed_count: int = 0
     business_context: str
+    data_source_id: int | None = None
+    knowledge_base: str = ""
     error: str | None = None
     created_at: str
     updated_at: str
