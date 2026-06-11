@@ -9,6 +9,7 @@ ARG NPM_REGISTRY
 WORKDIR /app
 COPY package.json package-lock.json* tsconfig.json vite.config.ts index.html ./
 COPY src ./src
+COPY public ./public
 RUN npm config set registry "$NPM_REGISTRY" \
     && npm install
 RUN npm run build

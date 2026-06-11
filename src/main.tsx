@@ -98,6 +98,8 @@ const defaultConnection: Connection = {
   connect_timeout: 10
 };
 
+const MYSQL_ICON_URL = "/mysql-icon.svg";
+
 function App() {
   const [dataSources, setDataSources] = React.useState<DataSource[]>([]);
   const [selectedDataSourceId, setSelectedDataSourceId] = React.useState<number | null>(null);
@@ -366,6 +368,8 @@ function App() {
   const currentRunError = currentRun?.run.error || null;
   const schemaColumnCount = schema.reduce((sum, table) => sum + table.columns.length, 0);
   const hasMessageError = message.includes("失败") || message.includes("error") || message.includes("detail");
+  const isRunActive = currentRun?.run.status === "pending" || currentRun?.run.status === "running";
+  const isBusy = Boolean(loading) || isRunActive;
 
   return (
     <main className="app-shell">
@@ -374,8 +378,8 @@ function App() {
           <p className="eyebrow">Local benchmark generator</p>
           <h1>MySQL 问数评测集生成器</h1>
         </div>
-        <div className={`status-pill ${hasMessageError ? "danger" : ""}`}>
-          {hasMessageError ? <XCircle size={16} /> : <Activity size={16} />}
+        <div className={`status-pill ${hasMessageError ? "danger" : ""} ${isBusy ? "busy" : ""}`}>
+          {hasMessageError ? <XCircle size={16} /> : isBusy ? <Spinner /> : <Activity size={16} />}
           {message}
         </div>
       </header>
@@ -392,16 +396,25 @@ function App() {
           <div className="source-list">
             {dataSources.length === 0 && <p className="muted">暂无保存的数据源。</p>}
             {dataSources.map((source) => (
-              <button
+              <div
                 key={source.id}
-                className={source.id === selectedDataSourceId ? "source-card active" : "source-card"}
-                onClick={() => void applyDataSource(source)}
+                className={[
+                  "source-card",
+                  source.id === selectedDataSourceId ? "active" : "",
+                  source.id === selectedDataSourceId && loading === "schema" ? "loading" : ""
+                ].filter(Boolean).join(" ")}
               >
-                <span>{source.name}</span>
-                <small>
-                  {source.connection.host}:{source.connection.port}/{source.connection.database}
-                </small>
-              </button>
+                <span className="source-mark" aria-hidden="true">
+                  <img src={MYSQL_ICON_URL} alt="" />
+                </span>
+                <button className="source-select" type="button" onClick={() => void applyDataSource(source)}>
+                  <strong>{source.name}</strong>
+                  <small>
+                    {source.connection.host}:{source.connection.port}/{source.connection.database}
+                  </small>
+                </button>
+                {source.id === selectedDataSourceId && loading === "schema" && <Spinner />}
+              </div>
             ))}
           </div>
 
@@ -434,16 +447,16 @@ function App() {
 
           <div className="button-row">
             <button onClick={saveDataSource} disabled={loading === "save-source"}>
-              <Save size={16} />
-              保存数据源
+              {loading === "save-source" ? <Spinner /> : <Save size={16} />}
+              {loading === "save-source" ? "正在保存" : "保存数据源"}
             </button>
             <button onClick={testConnection} disabled={loading === "connection"}>
-              <CheckCircle2 size={16} />
-              测试连接
+              {loading === "connection" ? <Spinner /> : <CheckCircle2 size={16} />}
+              {loading === "connection" ? "测试中" : "测试连接"}
             </button>
             <button onClick={() => void inspect()} disabled={loading === "schema"}>
-              <Table2 size={16} />
-              读取库表
+              {loading === "schema" ? <Spinner /> : <Table2 size={16} />}
+              {loading === "schema" ? "读取中" : "读取库表"}
             </button>
           </div>
           {isDataSourceDirty && <div className="inline-note">当前数据源有未保存修改。</div>}
@@ -488,7 +501,7 @@ function App() {
             onChange={(value) => setQuestionCount(Math.max(1, Math.min(200, Number(value) || 100)))}
           />
           <button className="primary" onClick={startRun} disabled={loading === "run"}>
-            <Play size={16} />
+            {loading === "run" ? <Spinner /> : <Play size={16} />}
             {loading === "run" ? "正在启动..." : "生成评测集"}
           </button>
         </aside>
@@ -497,7 +510,10 @@ function App() {
           <div className="panel">
             <PanelTitle icon={<Activity size={18} />} title="任务状态" />
             {currentRun && (
-              <div className="stage-banner">
+              <div className={`stage-banner ${isRunActive ? "busy" : ""}`}>
+                <span className="stage-orbit" aria-hidden="true">
+                  {isRunActive ? <Spinner /> : <CheckCircle2 size={15} />}
+                </span>
                 <div>
                   <span>{currentRun.run.stage}</span>
                   <strong>{currentRun.run.stage_message || currentRun.run.status}</strong>
@@ -536,8 +552,8 @@ function App() {
                 刷新
               </button>
               <button onClick={retryFailed} disabled={!currentRunId || failed === 0 || loading === "retry"}>
-                <AlertCircle size={16} />
-                重试失败题
+                {loading === "retry" ? <Spinner /> : <AlertCircle size={16} />}
+                {loading === "retry" ? "重试中" : "重试失败题"}
               </button>
               {currentRunId && (
                 <>
@@ -664,6 +680,10 @@ function StateBox({ title, text, tone }: { title: string; text: string; tone?: "
       <span>{text}</span>
     </div>
   );
+}
+
+function Spinner() {
+  return <span className="spinner" aria-hidden="true" />;
 }
 
 function PanelTitle({ icon, title }: { icon: React.ReactNode; title: string }) {
